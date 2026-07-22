@@ -2,31 +2,35 @@ name: Auto Book Cult Class
 
 on:
   schedule:
-    - cron: '35 16 * * *' # 4:35 PM UTC i.e 10:05 PM IST
+    - cron: '24 16 * * *' # 4:24 PM UTC i.e 9:54 PM IST - starts 2 min before the booking window to allow for setup time
   workflow_dispatch:
 
 jobs:
   book-class:
     runs-on: ubuntu-latest
-    
+    timeout-minutes: 15
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v1
         with:
           bun-version: latest
-      
+
       - name: Install dependencies
         run: bun install
-      
-      - name: Run booking script
+
+      - name: Run booking script (retries across the 9:56-10:05 PM IST window)
         env:
           CURL_COMMAND: ${{ secrets.CURL_COMMAND }}
           PREFERRED_CENTER: ${{ secrets.PREFERRED_CENTER }}
           PREFERRED_SLOTS: ${{ secrets.PREFERRED_SLOTS }}
           PREFERRED_WORKOUT: ${{ secrets.PREFERRED_WORKOUT }}
           ENABLE_WAITLIST: ${{ secrets.ENABLE_WAITLIST }}
-        run: bun index.js
+          WINDOW_START: '21:56:00'
+          WINDOW_END: '22:05:00'
+          RETRY_INTERVAL_SECONDS: '5'
+        run: bun run-booking-window.js
 

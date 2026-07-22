@@ -69,14 +69,18 @@ const HTTP_POST = "POST",
     HTTP_GET = "GET";
 
 
-const PREFERRED_SLOTS = config.preferredSlots || ['09:00:00'];
+const PREFERRED_SLOTS_CONFIG = config.preferredSlots || ['09:00:00'];
 const PREFERRED_CENTER = config.preferredCenter || 1515;
-const PREFERRED_WORKOUT_NAME = config.preferredWorkout || "HRX WORKOUT";
+const PREFERRED_WORKOUT_NAMES = config.preferredWorkout || ["HRX WORKOUT"];
 const ENABLE_WAITLIST = config.enableWaitlist !== false;
 
-const PREFERRED_CLASSES_IN_ORDER = Object.values(ActivityType).filter(
-    activity => activity.name === PREFERRED_WORKOUT_NAME
-);
+// Preference order follows PREFERRED_WORKOUT_NAMES, not the hardcoded ActivityType.preference values
+const PREFERRED_CLASSES_IN_ORDER = PREFERRED_WORKOUT_NAMES
+    .map((name, index) => {
+        const activity = Object.values(ActivityType).find(activity => activity.name === name);
+        return activity ? { ...activity, preference: index + 1 } : null;
+    })
+    .filter(Boolean);
 
 function hasBookingForDate(classesForDay) {
     for (let timeSlot of classesForDay.classByTimeList) {
@@ -93,49 +97,98 @@ function hasBookingForDate(classesForDay) {
     return false;
 }
 
-async function main() {
+// Returns a status describing the outcome, so a caller retrying across a time
+// window knows when to stop: 'BOOKED' | 'ALREADY_BOOKED' | 'WAITLISTED' | 'NO_MATCH' | 'ERROR'
+async function attemptBooking() {
     try {
         let classes = await makeAPICall({}, CURE_FIT_HOST, URI.GET_CLASSES, HTTP_GET, commonHeaders);
         let date = classes.days[classes.days.length - 1].id;
-        
+
         console.log(`Booking for ${date}`);
-        
+
         if (hasBookingForDate(classes.classByDateMap[date])) {
             console.log(`Already booked on ${date}. Skipping.`);
-            return;
+            return 'ALREADY_BOOKED';
         }
+
+        // Determine the day of the week (e.g., "monday", "tuesday")
+        const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }).toLowerCase();
         
-        let slots = [];
-        
-        for (let slot of PREFERRED_SLOTS) {
-            slots = getSlots(classes.classByDateMap[date], slot, PREFERRED_CLASSES_IN_ORDER);
-            
-            if (slots.length > 0) {
-                let classInfo = slots[0];
-                console.log(`Found ${PREFERRED_WORKOUT_NAME} at ${slot} on ${date}`);
-                
-                if (classInfo.state === 'WAITLIST_AVAILABLE') {
-                    let waitlistCount = classInfo.waitlistInfo && classInfo.waitlistInfo.waitlistedUserCount || 0;
-                    console.log(`Joining waitlist (${waitlistCount} people ahead)`);
-                } else {
-                    console.log(`Booking (${classInfo.availableSeats} seats available)`);
-                }
-                
+        let preferredSlotsForDay;
+        if (PREFERRED_SLOTS_CONFIG && !Array.isArray(PREFERRED_SLOTS_CONFIG) && typeof PREFERRED_SLOTS_CONFIG === 'object') {
+            preferredSlotsForDay = PREFERRED_SLOTS_CONFIG[dayOfWeek];
+            if (!preferredSlotsForDay) {
+                preferredSlotsForDay = PREFERRED_SLOTS_CONFIG['default'] || PREFERRED_SLOTS_CONFIG['any'] || ['09:00:00'];
+            }
+        } else {
+            preferredSlotsForDay = PREFERRED_SLOTS_CONFIG;
+        }
+
+        console.log(`Preferred slots for ${dayOfWeek}: ${preferredSlotsForDay.join(', ')}`);
+
+        const dayData = classes.classByDateMap[date];
+
+        // Pass 1: book the first open seat, trying preferred slots in order
+        for (let slot of preferredSlotsForDay) {
+            let available = getSlots(dayData, slot, PREFERRED_CLASSES_IN_ORDER, ['AVAILABLE']);
+
+            if (available.length > 0) {
+                let classInfo = available[0];
+                console.log(`Found ${classInfo.workoutName} at ${slot} on ${date}`);
+                console.log(`Booking (${classInfo.availableSeats} seats available)`);
                 await bookClass(classInfo.id);
                 console.log("Class booked successfully!");
-                break;
+                return 'BOOKED';
             }
         }
-        
-        if (slots.length === 0) {
-            console.log(`No ${PREFERRED_WORKOUT_NAME} classes available on ${date}`);
+
+        console.log(`No ${PREFERRED_WORKOUT_NAMES.join(' or ')} classes available on ${date}`);
+
+        if (!ENABLE_WAITLIST) {
+            return 'NO_MATCH';
         }
+
+        // Pass 2: no open seats in any preferred slot - join whichever preferred slot has the shortest waitlist
+        let waitlistCandidates = [];
+        for (let slot of preferredSlotsForDay) {
+            for (let classInfo of getSlots(dayData, slot, PREFERRED_CLASSES_IN_ORDER, ['WAITLIST_AVAILABLE'])) {
+                waitlistCandidates.push({ slot, classInfo });
+            }
+        }
+
+        if (waitlistCandidates.length === 0) {
+            console.log(`No waitlist spots available on ${date}`);
+            return 'NO_MATCH';
+        }
+
+        // Workout preference (HRX before ADIDAS STRENGTH+) wins first; minimum waitlist count
+        // is only a tiebreaker between slots/times for the same workout.
+        waitlistCandidates.sort((a, b) => {
+            if (a.classInfo.preference !== b.classInfo.preference) {
+                return a.classInfo.preference - b.classInfo.preference;
+            }
+            let countA = (a.classInfo.waitlistInfo && a.classInfo.waitlistInfo.waitlistedUserCount) || 0;
+            let countB = (b.classInfo.waitlistInfo && b.classInfo.waitlistInfo.waitlistedUserCount) || 0;
+            return countA - countB;
+        });
+
+        let best = waitlistCandidates[0];
+        let waitlistCount = (best.classInfo.waitlistInfo && best.classInfo.waitlistInfo.waitlistedUserCount) || 0;
+        console.log(`Joining waitlist for ${best.classInfo.workoutName} at ${best.slot} (${waitlistCount} people ahead)`);
+        await bookClass(best.classInfo.id);
+        console.log("Joined waitlist successfully!");
+        return 'WAITLISTED';
     } catch (error) {
         errorHandler(error);
+        return 'ERROR';
     }
 }
 
-main();
+if (require.main === module) {
+    attemptBooking();
+}
+
+module.exports = { attemptBooking };
 
 
 async function bookClass(activityID) {
@@ -175,24 +228,24 @@ async function makeAPICall(request, host, path, method, headers) {
     return await response.text();
 }
 
-function getSlots(classesForDay, slot, classTypes) {
-    
+function getSlots(classesForDay, slot, classTypes, allowedStates) {
+
     let timeSlot = classesForDay.classByTimeList.filter(function (classByTime) {
         return classByTime.id == slot;
     })[0];
-    
+
     if (!timeSlot) {
         return [];
     }
-    
+
     let centerClasses = timeSlot.centerWiseClasses.filter(function (center) {
         return center.centerId == PREFERRED_CENTER;
     })[0];
-    
+
     if (!centerClasses) {
         return [];
     }
-    
+
     let classIDs = centerClasses.classes.filter(function (classs) {
         let filterElement = classTypes.filter(function (classType) {
             return classType.id == classs.workoutId && classType.name == classs.workoutName
@@ -201,17 +254,13 @@ function getSlots(classesForDay, slot, classTypes) {
             return false;
         }
         classs.preference = filterElement.preference;
-        
-        if (ENABLE_WAITLIST) {
-            return classs.state === 'AVAILABLE' || classs.state === 'WAITLIST_AVAILABLE';
-        } else {
-            return classs.state === 'AVAILABLE';
-        }
+
+        return allowedStates.includes(classs.state);
     })
     .sort(function (class1, class2) {
         return class1.preference - class2.preference;
     });
-    
+
     return classIDs;
 }
 

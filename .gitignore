@@ -5,4 +5,5 @@ config.local.js
 *.log
 .DS_Store
 bun.lockb
+package-lock.json
 classes.json

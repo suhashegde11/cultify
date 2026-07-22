@@ -108,7 +108,7 @@ curl 'https://www.cult.fit/api/user/cities/v2' \
 3. Select "Auto Book Cult Class" workflow
 4. Click "Enable workflow" if needed
 
-**That's it!** The workflow will automatically run daily at 10:05 PM IST and book your class.
+**That's it!** The workflow starts daily at 9:54 PM IST and retries every 5 seconds through the 9:56-10:05 PM IST window (when slots typically open) until it books a class or the window closes.
 
 ### Manual Trigger
 
@@ -171,7 +171,9 @@ PREFERRED_CENTER=151
 
 #### PREFERRED_SLOTS (Optional)
 
-Comma-separated time slots in 24-hour format (HH:MM:SS).
+Time slots in 24-hour format (HH:MM:SS), tried in order until one is available. Supports two formats:
+
+**1. Comma-separated list** — same slots every day.
 
 **Default:** 07:00:00,08:00:00,09:00:00
 
@@ -179,6 +181,15 @@ Comma-separated time slots in 24-hour format (HH:MM:SS).
 ```bash
 PREFERRED_SLOTS=07:00:00,08:00:00,09:00:00
 ```
+
+**2. JSON map keyed by day of week** — different slots per day, with an optional `default`/`any` fallback for days not listed.
+
+**Example:**
+```bash
+PREFERRED_SLOTS={"monday":["06:00:00"],"wednesday":["07:00:00","08:00:00"],"default":["09:00:00"]}
+```
+
+The script looks up the booking date's day of week (e.g. `monday`) in the map. If that day isn't present, it falls back to `default`, then `any`, then `09:00:00`.
 
 Script attempts slots in order and books first available match.
 
@@ -274,27 +285,35 @@ Use debug mode to troubleshoot:
 
 ## Customizing Schedule
 
-The workflow runs at **10:05 PM IST** daily by default.
+By default the workflow starts at **9:54 PM IST** and `run-booking-window.js` retries every 5 seconds through the **9:56-10:05 PM IST** window (when slots typically open), stopping as soon as it books a class, joins a waitlist, or finds you're already booked.
 
-To change the schedule:
+To change the window:
 
 1. Edit `.github/workflows/book-class.yml` in your forked repository
-2. Modify the cron expression:
+2. Update the `WINDOW_START` / `WINDOW_END` env values (and `RETRY_INTERVAL_SECONDS` if you want a different retry cadence):
+
+```yaml
+env:
+  WINDOW_START: '21:56:00'
+  WINDOW_END: '22:05:00'
+  RETRY_INTERVAL_SECONDS: '5'
+```
+
+3. Also update the cron trigger so the job starts a couple of minutes before `WINDOW_START` (to account for checkout/install time):
 
 ```yaml
 on:
   schedule:
-    - cron: '5 10 * * *'  # minute hour day month weekday (UTC)
+    - cron: '24 16 * * *'  # minute hour day month weekday (UTC) - 2 min before WINDOW_START
 ```
 
-**Example Schedules:**
+**Tip:** Cult.fit typically opens next-day booking around 10:00 PM IST, but the exact moment can vary by a few minutes - hence the retry window instead of a single fixed time.
 
-- `'35 4 * * *'` - 10:05 AM IST (4:35 AM UTC)
-- `'0 0 * * *'` - 5:30 AM IST (midnight UTC)
-- `'0 12 * * *'` - 5:30 PM IST (noon UTC)
-- `'30 23 * * *'` - 5:00 AM IST (11:30 PM UTC)
+To test locally without waiting for the real window, override the times directly:
 
-**Tip:** Cult.fit typically opens booking for next day around 10:00 AM IST.
+```bash
+WINDOW_START=09:00:00 WINDOW_END=09:00:30 RETRY_INTERVAL_SECONDS=5 node run-booking-window.js
+```
 
 ## Expected Output
 
@@ -469,7 +488,8 @@ cultify/
 │   └── workflows/
 │       └── book-class.yml    # GitHub Actions workflow
 ├── config.js                  # Configuration parser
-├── index.js                   # Main booking script
+├── index.js                   # Single booking attempt (exports attemptBooking)
+├── run-booking-window.js      # Retries attemptBooking across the booking window
 ├── package.json              # Dependencies
 ├── .env                      # Local testing only (gitignored)
 ├── .gitignore               # Git ignore rules
@@ -488,10 +508,16 @@ cultify/
 - Fetches available classes
 - Filters by preferences
 - Handles booking logic
+- Exports `attemptBooking()` for reuse by `run-booking-window.js`; runs once immediately when executed directly
+
+**run-booking-window.js**
+- Calls `attemptBooking()` on a retry loop (default every 5s) across `WINDOW_START`-`WINDOW_END`
+- Stops early once a class is booked, a waitlist is joined, or a booking already exists for the date
+- Used by the GitHub Actions workflow instead of running `index.js` once
 
 **book-class.yml**
 - Defines GitHub Actions workflow
-- Sets schedule
+- Sets schedule (starts a couple minutes before `WINDOW_START`)
 - Configures environment
 
 ### Adding New Workout Types
@@ -687,7 +713,7 @@ No, one repository = one Cult.fit account. Fork additional copies for other acco
 
 ### What time does the booking run?
 
-Default is 10:05 AM UTC (3:35 PM IST). You can customize this by editing the workflow file's cron schedule.
+By default the workflow starts at 9:54 PM IST and retries every 5 seconds through the 9:56-10:05 PM IST window until it succeeds. You can customize this via `WINDOW_START`/`WINDOW_END`/`RETRY_INTERVAL_SECONDS` in the workflow file (see [Customizing Schedule](#customizing-schedule)).
 
 ## Support
 

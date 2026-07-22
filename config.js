@@ -65,8 +65,24 @@ if (process.env.CURL_COMMAND) {
 }
 
 config.preferredCenter = process.env.PREFERRED_CENTER ? parseInt(process.env.PREFERRED_CENTER) : null;
-config.preferredSlots = process.env.PREFERRED_SLOTS ? process.env.PREFERRED_SLOTS.split(',') : null;
-config.preferredWorkout = process.env.PREFERRED_WORKOUT || null;
+let preferredSlots = null;
+if (process.env.PREFERRED_SLOTS) {
+    const rawSlots = process.env.PREFERRED_SLOTS.trim();
+    if (rawSlots.startsWith('{')) {
+        try {
+            preferredSlots = JSON.parse(rawSlots);
+        } catch (e) {
+            console.error("Failed to parse PREFERRED_SLOTS as JSON, falling back to comma-separated values.", e.message);
+            preferredSlots = rawSlots.split(',');
+        }
+    } else {
+        preferredSlots = rawSlots.split(',');
+    }
+}
+config.preferredSlots = preferredSlots;
+config.preferredWorkout = process.env.PREFERRED_WORKOUT
+    ? process.env.PREFERRED_WORKOUT.split(',').map(name => name.trim())
+    : null;
 config.enableWaitlist = process.env.ENABLE_WAITLIST !== 'false';
 
 module.exports = config;
