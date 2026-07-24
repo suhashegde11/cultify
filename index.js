@@ -67,6 +67,7 @@ const URI = {
 };
 const HTTP_POST = "POST",
     HTTP_GET = "GET";
+const REQUEST_TIMEOUT_MS = 3000;
 
 
 const PREFERRED_SLOTS_CONFIG = config.preferredSlots || ['09:00:00'];
@@ -206,7 +207,8 @@ async function makeAPICall(request, host, path, method, headers) {
     const url = `https://${host}${path}`;
     const options = {
         method: method,
-        headers: headers
+        headers: headers,
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS)
     };
 
     if (method === 'POST') {
