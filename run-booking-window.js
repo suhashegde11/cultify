@@ -51,9 +51,21 @@ async function run() {
     }
 
     let attempt = 0;
-    while (Date.now() <= windowEnd.getTime()) {
+    while (true) {
+        // Anchor each attempt to windowStart + attempt*interval (absolute time) rather than
+        // chaining relative sleeps, so per-attempt network latency can't accumulate drift.
+        const scheduledTime = windowStart.getTime() + attempt * RETRY_INTERVAL_MS;
+        if (scheduledTime > windowEnd.getTime()) {
+            break;
+        }
+
+        const waitMs = scheduledTime - Date.now();
+        if (waitMs > 0) {
+            await sleep(waitMs);
+        }
+
         attempt++;
-        console.log(`\n--- Attempt ${attempt} at ${new Date().toISOString()} ---`);
+        console.log(`\n--- Attempt ${attempt} at ${new Date().toISOString()} (target ${new Date(scheduledTime).toISOString()}) ---`);
 
         const status = await attemptBooking();
 
@@ -61,11 +73,6 @@ async function run() {
             console.log(`Stopping retry loop (status: ${status}).`);
             return;
         }
-
-        if (Date.now() >= windowEnd.getTime()) {
-            break;
-        }
-        await sleep(RETRY_INTERVAL_MS);
     }
 
     console.log('Booking window closed without securing a class or waitlist spot.');

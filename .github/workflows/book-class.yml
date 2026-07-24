@@ -32,6 +32,6 @@ jobs:
           ENABLE_WAITLIST: ${{ secrets.ENABLE_WAITLIST }}
           WINDOW_START: '21:56:00'
           WINDOW_END: '22:05:00'
-          RETRY_INTERVAL_SECONDS: '5'
+          RETRY_INTERVAL_SECONDS: '1'
         run: bun run-booking-window.js
 
