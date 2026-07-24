@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Run booking script (retries across the 9:56-10:05 PM IST window)
+      - name: Run booking script (retries across the 9:58:15-10:05 PM IST window)
         env:
           CURL_COMMAND: ${{ secrets.CURL_COMMAND }}
           COOKIES: ${{ secrets.COOKIES }}
@@ -30,7 +30,7 @@ jobs:
           PREFERRED_SLOTS: ${{ secrets.PREFERRED_SLOTS }}
           PREFERRED_WORKOUT: ${{ secrets.PREFERRED_WORKOUT }}
           ENABLE_WAITLIST: ${{ secrets.ENABLE_WAITLIST }}
-          WINDOW_START: '21:56:00'
+          WINDOW_START: '21:58:15'
           WINDOW_END: '22:05:00'
           RETRY_INTERVAL_SECONDS: '1'
         run: bun run-booking-window.js
