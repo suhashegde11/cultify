@@ -129,17 +129,20 @@ async function attemptBooking() {
 
         const dayData = classes.classByDateMap[date];
 
-        // Pass 1: book the first open seat, trying preferred slots in order
-        for (let slot of preferredSlotsForDay) {
-            let available = getSlots(dayData, slot, PREFERRED_CLASSES_IN_ORDER, ['AVAILABLE']);
+        // Pass 1: book the first open seat, trying preferred workouts in order
+        // (all preferred slots are checked for a workout before moving to the next workout)
+        for (let workout of PREFERRED_CLASSES_IN_ORDER) {
+            for (let slot of preferredSlotsForDay) {
+                let available = getSlots(dayData, slot, [workout], ['AVAILABLE']);
 
-            if (available.length > 0) {
-                let classInfo = available[0];
-                console.log(`Found ${classInfo.workoutName} at ${slot} on ${date}`);
-                console.log(`Booking (${classInfo.availableSeats} seats available)`);
-                await bookClass(classInfo.id);
-                console.log("Class booked successfully!");
-                return 'BOOKED';
+                if (available.length > 0) {
+                    let classInfo = available[0];
+                    console.log(`Found ${classInfo.workoutName} at ${slot} on ${date}`);
+                    console.log(`Booking (${classInfo.availableSeats} seats available)`);
+                    await bookClass(classInfo.id);
+                    console.log("Class booked successfully!");
+                    return 'BOOKED';
+                }
             }
         }
 
