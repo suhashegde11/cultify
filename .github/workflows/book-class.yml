@@ -25,6 +25,7 @@ jobs:
       - name: Run booking script (retries across the 9:56-10:05 PM IST window)
         env:
           CURL_COMMAND: ${{ secrets.CURL_COMMAND }}
+          COOKIES: ${{ secrets.COOKIES }}
           PREFERRED_CENTER: ${{ secrets.PREFERRED_CENTER }}
           PREFERRED_SLOTS: ${{ secrets.PREFERRED_SLOTS }}
           PREFERRED_WORKOUT: ${{ secrets.PREFERRED_WORKOUT }}
