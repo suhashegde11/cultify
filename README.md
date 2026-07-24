@@ -18,6 +18,8 @@ Cultify is an automation tool that books fitness classes at Cult.fit centers. It
 - Zero server costs (runs on GitHub infrastructure)
 - Secure credential management via GitHub Secrets
 - No installation required - just fork and configure!
+- It keeps checking for cookies expiry everyday at 9AM and notifies you via email (if enabled by git for failure) that cookies expired.
+  
 
 ## Why Cultify?
 
@@ -29,11 +31,11 @@ Cultify is an automation tool that books fitness classes at Cult.fit centers. It
 
 ## How It Works
 
-1. Extracts authentication from browser curl command
+1. Extracts authentication from browser curl command (cookies path)
 2. Fetches available classes via Cult.fit API
 3. Filters by configured preferences (center, time, workout type)
 4. Checks for existing bookings on target date
-5. Books first available matching class
+5. Books first available matching class according to the preference
 6. Logs results for monitoring
 
 ## Prerequisites
@@ -53,31 +55,29 @@ Get started in 3 simple steps - no installation or coding required!
 
 ### Step 2: Get Authentication
 
-You need a curl command containing your authentication cookies:
+You need your Cult.fit session cookie:
 
-1. Navigate to https://www.cult.fit and login
-2. Open browser Developer Tools (F12 or Cmd+Option+I on Mac)
-3. Go to Network tab
-4. Refresh page or navigate to any section
-5. Select any API request to `cult.fit` domain
-6. Right-click request → Copy → Copy as cURL (bash)
+1. Navigate to https://www.cult.fit and log in
+2. Open DevTools (F12, or Cmd+Option+I on Mac)
+3. Click the **Network** tab in the DevTools toolbar
+4. Refresh the page (Cmd+R / F5) so requests populate in the left-hand request list
+5. In the filter bar just below the Network tab, click **Fetch/XHR** to narrow the list
+6. Click any request going to `cult.fit` (e.g. one named `v2`, `cities`, or `classes`)
+7. In the right-hand panel, make sure the **Headers** sub-tab is selected
+8. Scroll down to the **Request Headers** section
+9. Find the row starting with `cookie:` — hover over it, click the small copy icon that appears (or select the text manually), and copy everything **after** `cookie: `
 
-Your curl command should look like:
+Your copied value should look like:
+st...deviceId=...; at=s%3ACFAPP%3A...; st=s%3ACFAPP%3A...; ...
 
-```bash
-curl 'https://www.cult.fit/api/user/cities/v2' \
-  -H 'accept: application/json' \
-  -H 'apikey: 9d153009-e961-4718-a343-2a36b0a1d1fd' \
-  -H 'appversion: 7' \
-  -H 'browsername: Chrome' \
-  -b 'deviceId=...; at=s%3ACFAPP%3A...; st=s%3ACFAPP%3A...; ...' \
-  -H 'osname: browser' \
-  -H 'timezone: Asia/Kolkata' \
-  -H 'user-agent: Mozilla/5.0 ...' \
-  -H 'referer: https://www.cult.fit/me/profile'
-```
+**Important:** Copy only the value (the `name=value; name=value; ...` string) — do not include the `cookie:` label itself, and don't wrap it in quotes.
 
-**Important:** Convert to single line by removing all backslashes and line breaks.
+And the corresponding secret in Step 3:
+
+**Required:**
+- Name: `COOKIES`
+- Value: The cookie string you copied in Step 2
+
 
 ### Step 3: Configure & Enable
 
@@ -89,8 +89,8 @@ curl 'https://www.cult.fit/api/user/cities/v2' \
 4. Add the following secret:
 
 **Required:**
-- Name: `CURL_COMMAND`
-- Value: Your complete curl command (single line, no backslashes)
+- Name: `COOKIES`
+- Value: Your complete cookies value fetched in above step
 
 **Optional Secrets** (customize if needed):
 
