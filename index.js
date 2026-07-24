@@ -189,7 +189,7 @@ if (require.main === module) {
     attemptBooking();
 }
 
-module.exports = { attemptBooking };
+module.exports = { attemptBooking, makeAPICall, commonHeaders, CURE_FIT_HOST, GET_CLASSES_URI: URI.GET_CLASSES };
 
 
 async function bookClass(activityID) {
